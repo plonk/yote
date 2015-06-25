@@ -139,11 +139,12 @@ class GameState
   end
 
   DIR_OFFSETS = {
-    'UP'=>[0,-1],
-    'DOWN'=>[0,1],
-    'LEFT'=>[-1,0],
-    'RIGHT'=>[1,0],
-    'STAY'=>[0,0]}
+    'UP'    => [ 0, -1],
+    'DOWN'  => [ 0,  1],
+    'LEFT'  => [-1,  0],
+    'RIGHT' => [ 1,  0],
+    'STAY'  => [ 0,  0]
+  }
 
   def eval_action!(player, move)
     if move.bomb && player_can_set_bomb(player)

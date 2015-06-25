@@ -46,6 +46,8 @@ class BombmanClient
     if json_str then GameState.new JSON.parse(json_str) else nil end
   end
 
+  # @in, @out を同期モードにして渡されたブロックを実行し、
+  # 実行した後は @in, @out を元の状態に戻す
   def synchronized_io
     init_sync_state = @out.sync
     @out.sync = true
