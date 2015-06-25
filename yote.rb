@@ -35,7 +35,9 @@ class BombmanClient
 
   def handshake(name)
     @out.puts name
-    @in.readline.to_i
+    line = @in.readline
+    raise 'invalid id' unless line =~ /^\d$/
+    line.to_i
   end
 
   # () → GameState or nil

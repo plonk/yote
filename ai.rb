@@ -9,6 +9,14 @@ class BombmanAi
     @id = id
   end
 
+  # 手を決定する
+  # GameState → Move
+  def move(state)
+    legal_moves(state).max_by { |m| score_move(state, m) }
+  end
+
+  private
+
   # GameState → [Move]
   def legal_moves(state)
     DIR.flat_map do |d|
@@ -24,13 +32,6 @@ class BombmanAi
     others = ([0, 1, 2, 3] - [self.id]).map { |x| [x, ms.sample] }.to_h
     return score(state.transition({self.id => move}.merge(others)),
                  self.id)
-  end
-
-  # 手を決定する
-  # GameState → Move
-  def move(state)
-    moves = legal_moves(state)
-    moves.max_by { |m| score_move(state, m) }
   end
 
   # 評価関数
