@@ -41,11 +41,7 @@ class BombmanClient
   # () → GameState or nil
   def recv_game_state
     json_str = @in.gets
-    if json_str
-      GameState.new JSON.parse(json_str)
-    else
-      nil
-    end
+    if json_str then GameState.new JSON.parse(json_str) else nil end
   end
 
   def synchronized_io
