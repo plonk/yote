@@ -10,9 +10,7 @@ class BombmanClient
   attr_reader :name, :id
 
   def initialize(in_io, out_io, name)
-    @in = in_io
-    @out = out_io
-    @name = name
+    @in, @out, @name = in_io, out_io, name
     @ai = nil
   end
 
@@ -20,7 +18,6 @@ class BombmanClient
     synchronized_io do
       interact
     end
-
   end
 
   private
