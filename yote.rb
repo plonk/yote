@@ -4,71 +4,60 @@
 require 'json'
 require_relative 'game_state'
 require_relative 'move'
+require_relative 'ai'
 
-class BombmanAi
+class BombmanClient
   attr_reader :name, :id
 
-  DIR = %w[UP DOWN LEFT RIGHT STAY]
-
-  def initialize(name)
+  def initialize(in_io, out_io, name)
+    @in = in_io
+    @out = out_io
     @name = name
-  end
-
-  def handshake
-    puts @name
-    @id = readline.to_i
-  end
-
-  # () → GameState
-  def recv_game_state
-    json_str = gets
-    GameState.new JSON.parse(json_str)
-  end
-
-  # GameState → [Move]
-  def legal_moves(state)
-    DIR.flat_map do |d|
-      [true, false].map do |b|
-        Move.new(d, b)
-      end
-    end
-  end
-
-  # (GameState, Move) → Integer
-  def score_move(state, move)
-    ms = legal_moves(state)
-    others = ([0, 1, 2, 3] - [self.id]).map { |x| [x, ms.sample] }.to_h
-    return score(state.transition({self.id => move}.merge(others)),
-                 self.id)
-  end
-
-  # 評価関数
-  def score(state, id)
-    x = 0
-    me = state.player_by_id(id)
-
-    # 自分が死んでいるのは悪い
-    x += -100 unless me['isAlive']
-
-    # 自分以外の敵が少ない方が良い
-    x += ([*0..3] - [id]).count { |i| !state.player_by_id(i)['isAlive'] } * 10
-
-    # 自分のステータスが高い方が良い
-    x += me['power'] + me['setBombLimit']
-    x
+    @ai = nil
   end
 
   def run
-    handshake
-
-    loop do
-      state = recv_game_state
-      moves = legal_moves(state)
-      move = moves.max_by { |m| score_move(state, m) }
-      puts move
+    synchronized_io do
+      interact
     end
+
+  end
+
+  private
+
+  def interact
+    @id = handshake(@name)
+    @ai = BombmanAi.new(@name, @id)
+
+    while state = recv_game_state
+      break unless state
+      move = @ai.move state
+      @out.puts move
+    end
+  end
+
+  def handshake(name)
+    @out.puts name
+    @in.readline.to_i
+  end
+
+  # () → GameState or nil
+  def recv_game_state
+    json_str = @in.gets
+    if json_str
+      GameState.new JSON.parse(json_str)
+    else
+      nil
+    end
+  end
+
+  def synchronized_io
+    init_sync_state = @out.sync
+    @out.sync = true
+    yield
+  ensure
+    @out.sync = init_sync_state
   end
 end
 
-STDOUT.sync = true
-BombmanAi.new("予定地").run
+BombmanClient.new(STDIN, STDOUT, "予定地").run
