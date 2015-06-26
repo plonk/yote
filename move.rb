@@ -1,5 +1,6 @@
 class Move
-  attr_reader :command, :bomb, :comment
+  attr_reader :command, :bomb
+  attr_accessor :comment
 
   def initialize(command, bomb, comment = nil)
     @command = command
@@ -11,4 +12,3 @@ class Move
     "#{@command},#{@bomb}" + (@comment ? ",#@comment" : "")
   end
 end
-

@@ -18,7 +18,7 @@ class GameState
     return state
   end
 
-  def player_by_id(id)
+  def find_player(id)
     players.find { |player| player['id'] == id }
   end
 
@@ -75,10 +75,19 @@ class GameState
   # {Integer => Move}
   def transition!(id_to_move)
     id_to_move.each_pair do |id, move|
-      eval_action!(player_by_id(id), move)
+      eval_action!(find_player(id), move)
     end
-    
+
     self.turn += 1
+
+    # サドンデス時の落下する壁
+    if turn >= 360 and turn - 360 < FALLING_WALLS.size
+      pt = FALLING_WALLS[turn-360]
+      walls << pt
+      blocks.delete(pt)
+      items.delete_if { |item| item['pos'].values_at('x','y') == pt }
+      bombs.delete_if { |bomb| bomb['pos'].values_at('x','y') == pt }
+    end
 
     bombs.each do |bomb|
       bomb['timer'] -= 1
@@ -113,7 +122,8 @@ class GameState
     end
 
     players.each do |player|
-      if fires.include? pos_to_a(player['pos'])
+      pt = pos_to_a player['pos']
+      if fires.include? pt or walls.include? pt
         player['isAlive'] = false
         player['ch'] = '墓'
       end
@@ -174,5 +184,17 @@ class GameState
     end
   end
 
-end
+  spiral = proc do |left, right, top, bottom|
+    if left == 5
+      []
+    else
+      left      .upto(right)  .map { |x| [x, top]    } +
+      (top+1)   .upto(bottom) .map { |y| [right, y]  } +
+      (right-1) .downto(left) .map { |x| [x, bottom] } +
+      (bottom-1).downto(top+1).map { |y| [left, y]   } +
+      spiral.(left+1, right-1, top+1, bottom-1)
+    end
+  end
+  FALLING_WALLS = spiral.(1, 13, 1, 13)
 
+end
