@@ -87,6 +87,12 @@ class GameState
       blocks.delete(pt)
       items.delete_if { |item| item['pos'].values_at('x','y') == pt }
       bombs.delete_if { |bomb| bomb['pos'].values_at('x','y') == pt }
+      players.each do |player|
+        if pos_to_a(player['pos']) == pt
+          player['isAlive'] = false
+          player['ch'] = '墓'
+        end
+      end
     end
 
     bombs.each do |bomb|
@@ -123,7 +129,7 @@ class GameState
 
     players.each do |player|
       pt = pos_to_a player['pos']
-      if fires.include? pt or walls.include? pt
+      if fires.include? pt
         player['isAlive'] = false
         player['ch'] = '墓'
       end
@@ -136,13 +142,17 @@ class GameState
 
   def player_can_set_bomb(player)
     raise 'player' unless player.is_a? Hash
-    existing_bomb = bombs.any? { |b| b['pos'] == player['pos'] }
-    player['isAlive'] && !existing_bomb && player['setBombLimit'] > player['setBombCount']
+    player['isAlive'] && !bomb?(player['pos']) && player['setBombLimit'] > player['setBombCount']
+  end
+
+  def bomb?(pos)
+    bombs.any? { |b| b['pos'] == pos }
   end
 
   def player_set_bomb!(player)
     raise unless player_can_set_bomb(player)
-    player['setBombCount'] += 1
+    # player['setBombCount'] += 1
+    player['totalSetBombCount'] += 1
     self.bombs += [{"pos" => player['pos'],
                 "timer" => 10,
                 "power" => player['power']}]
@@ -165,11 +175,12 @@ class GameState
     next_pos = {
       "x" => player['pos']['x'] + dx,
       "y" => player['pos']['y'] + dy }
+    next_pt = pos_to_a(next_pos)
 
     if player['isAlive'] &&
-        !walls.include?(pos_to_a(next_pos)) &&
-        !blocks.include?(pos_to_a(next_pos)) &&
-        !bombs.map{|b| b['pos']}.include?(pos_to_a(next_pos))
+        !bombs.map{|b| b['pos']}.include?(next_pos) &&
+        !blocks.include?(next_pt) &&
+        !walls.include?(next_pt)
       player['pos'] = next_pos
     end
   end
@@ -196,5 +207,14 @@ class GameState
     end
   end
   FALLING_WALLS = spiral.(1, 13, 1, 13)
+
+  def finished?
+    players.count { |player| player['isAlive'] } <= 1
+  end
+
+  def winner
+    return nil unless finished?
+    players.find { |player| player['isAlive'] }
+  end
 
 end
