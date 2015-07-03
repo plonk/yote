@@ -21,7 +21,7 @@ class BombmanAi
   # GameState → Move
   def move(state)
     unless state.find_player(@id)['isAlive']
-      return Move.new('STAY','FALSE','死んでます')
+      return Move.new('STAY', false,'死んでます')
     end
 
     moves_to_consider = legal_moves(state, @id)
