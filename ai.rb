@@ -24,27 +24,26 @@ class BombmanAi
       return Move.new('STAY','FALSE','死んでます')
     end
 
-    all_moves = legal_moves(state)
-    moves_to_consider = legal_moves(state)
-
+    moves_to_consider = legal_moves(state, @id)
     chosen = moves_to_consider.max_by do |m|
       # パラメータ
-      nsimulations = 10
-      length = 15
+      nsimulations = 20
+      depth = 15
 
       scores = nsimulations.times.map do |simnum|
         commands = (0..3).map do |id|
           if id == @id
             [id, m]
           else
-            [id, all_moves.sample]
+            [id, legal_moves(state, id).sample]
           end
         end.to_h
         s = state.transition(commands)
-        length.times do |turn|
+        depth.times do |turn|
+          break unless s.find_player(@id)['isAlive']
           # STDERR.pp [simnum, turn]
           commands = (0..3).map do |id|
-            [id, all_moves.sample]
+            [id, legal_moves(s, id).sample]
           end.to_h
 
           s.transition!(commands)
@@ -53,8 +52,6 @@ class BombmanAi
       end
       arithmetic_mean scores
     end
-
-    chosen.comment = 'ほげ'
     chosen
   end
 
@@ -66,10 +63,22 @@ class BombmanAi
   end
 
   # GameState → [Move]
-  def legal_moves(state)
-    DIR.flat_map do |d|
-      [true, false].map do |b|
-        Move.new(d, b)
+  def legal_moves(state, id)
+    player = state.find_player(id)
+    dirs = (DIR - ['STAY']).select { |d|
+      x, y = player['pos'].values_at('x', 'y')
+      xoff, yoff = GameState::DIR_OFFSETS[d]
+      pos = {'x'=>x+xoff, 'y'=>y+yoff}
+      !(state.wall?(pos) or state.block?(pos) or state.bomb?(pos))
+    }
+    dirs += ['STAY'] # staying is always possible
+    dirs.flat_map do |d|
+      if state.player_can_set_bomb(player)
+        [true, false].map do |b|
+          Move.new(d, b)
+        end
+      else
+        [Move.new(d, false)]
       end
     end
   end
