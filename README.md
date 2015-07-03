@@ -11,7 +11,3 @@ bombman.properties にて
 	ai0=ruby\ [リポジトリのパス]/yote.rb
 
 などと指定してください。
-
-# バグ
-
-すぐ死ぬ。
