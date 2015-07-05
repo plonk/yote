@@ -73,35 +73,37 @@ class BombmanAi
   private
 
   # Move → Float
-  def score_move(m, state)
+  # move: 手
+  # state: 手を打つ直前の状態
+  def score_move(move, state)
     scores = NSIMULATIONS.times.map do
       # 一手目
       commands = (0..3).map do |id|
         if id == @id
-          [id, m]
+          [id, move]
         else
           [id, legal_moves(state, id).sample]
         end
       end.to_h
-      s = state.transition(commands)
+      first_step = state.transition(commands)
 
-      simulate!(s, DEPTH - 1)
-      score(s, @id)
+      result = simulate(first_step, DEPTH - 1)
+      score(result, @id)
     end
     arithmetic_mean scores
   end
 
-  # (GameState, Integer) → ()
-  # s は変更される
-  def simulate!(s, depth)
+  # (GameState, Integer) → GameState
+  def simulate(state, depth)
     depth.times do |turn|
-      break unless s.find_player(@id)['isAlive']
+      break unless state.find_player(@id)['isAlive']
       commands = (0..3).map do |id|
-        [id, legal_moves(s, id).sample]
+        [id, legal_moves(state, id).sample]
       end.to_h
 
-      s.transition!(commands)
+      state = state.transition(commands)
     end
+    state
   end
 
   # [Numeric] → Float
