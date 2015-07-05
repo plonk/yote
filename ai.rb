@@ -65,22 +65,12 @@ class BombmanAi
       return Move.new('STAY', false, '死んでます')
     end
 
-    return do_move(state)
-  end
-
-  private
-
-  # GameState → Move
-  def do_move(state)
-    choose_from_cands(legal_moves(state, @id), state)
-  end
-
-  # [Move] → Move
-  def choose_from_cands(moves_to_consider, state)
-    moves_to_consider.max_by do |m|
+    legal_moves(state, @id).max_by do |m|
       score_move(m, state)
     end
   end
+
+  private
 
   # Move → Float
   def score_move(m, state)
