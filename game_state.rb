@@ -217,4 +217,9 @@ class GameState
     players.find { |player| player['isAlive'] }
   end
 
+  # プレーヤーが隣接するセルからこのセルに移動することを阻む物がない
+  def enterable?(pos)
+    !(wall?(pos) or block?(pos) or bomb?(pos))
+  end
+
 end

@@ -6,6 +6,43 @@ class IO
   end
 end
 
+module PosMethods
+  def to_coords
+    values_at('x', 'y')
+  end
+
+  def addvec(unit_vector)
+    fail ArgumentError unless unit_vector.is_a? Array and unit_vector.size == 2
+    xoff, yoff = unit_vector
+    res = dup()
+    res.x += xoff
+    res.y += yoff
+    res
+  end
+end
+
+class Hash
+  include PosMethods
+
+  def method_missing(name, *args, &block)
+    if name.to_s =~ /(.*)=\z/
+      str = $1
+      if has_key?(str)
+        self[str] = args.first
+      else
+        fail "key #{str} not found "
+      end
+    else
+      str = name.to_s
+      if has_key?(str)
+        return self[str]
+      else
+        fail "key #{str} not found "
+      end
+    end
+  end
+end
+
 # ボムマンAIクラス
 class BombmanAi
   attr_reader :name, :id
@@ -17,66 +54,82 @@ class BombmanAi
     @id = id
   end
 
+  # シミュレーションのパラメータ
+  NSIMULATIONS = 20 # 一手につきシミュレーションを行う回数
+  DEPTH = 15        # 何手先までシミュレーションを行うか
+
   # 手を決定する
   # GameState → Move
   def move(state)
     unless state.find_player(@id)['isAlive']
-      return Move.new('STAY', false,'死んでます')
+      return Move.new('STAY', false, '死んでます')
     end
 
-    moves_to_consider = legal_moves(state, @id)
-    chosen = moves_to_consider.max_by do |m|
-      # パラメータ
-      nsimulations = 20
-      depth = 15
-
-      scores = nsimulations.times.map do |simnum|
-        commands = (0..3).map do |id|
-          if id == @id
-            [id, m]
-          else
-            [id, legal_moves(state, id).sample]
-          end
-        end.to_h
-        s = state.transition(commands)
-        depth.times do |turn|
-          break unless s.find_player(@id)['isAlive']
-          # STDERR.pp [simnum, turn]
-          commands = (0..3).map do |id|
-            [id, legal_moves(s, id).sample]
-          end.to_h
-
-          s.transition!(commands)
-        end
-        score(s, @id)
-      end
-      arithmetic_mean scores
-    end
-    chosen
+    return do_move(state)
   end
 
   private
 
+  # GameState → Move
+  def do_move(state)
+    choose_from_cands(legal_moves(state, @id), state)
+  end
+
+  # [Move] → Move
+  def choose_from_cands(moves_to_consider, state)
+    moves_to_consider.max_by do |m|
+      score_move(m, state)
+    end
+  end
+
+  # Move → Float
+  def score_move(m, state)
+    scores = NSIMULATIONS.times.map do
+      # 一手目
+      commands = (0..3).map do |id|
+        if id == @id
+          [id, m]
+        else
+          [id, legal_moves(state, id).sample]
+        end
+      end.to_h
+      s = state.transition(commands)
+
+      simulate!(s, DEPTH - 1)
+      score(s, @id)
+    end
+    arithmetic_mean scores
+  end
+
+  # (GameState, Integer) → ()
+  # s は変更される
+  def simulate!(s, depth)
+    depth.times do |turn|
+      break unless s.find_player(@id)['isAlive']
+      commands = (0..3).map do |id|
+        [id, legal_moves(s, id).sample]
+      end.to_h
+
+      s.transition!(commands)
+    end
+  end
+
+  # [Numeric] → Float
   def arithmetic_mean(list)
     raise 'empty list' if list.empty?
     list.inject(:+).fdiv list.size
   end
 
-  # GameState → [Move]
+  # (GameState, Integer) → [Move]
   def legal_moves(state, id)
     player = state.find_player(id)
     dirs = (DIR - ['STAY']).select { |d|
-      x, y = player['pos'].values_at('x', 'y')
-      xoff, yoff = GameState::DIR_OFFSETS[d]
-      pos = {'x'=>x+xoff, 'y'=>y+yoff}
-      !(state.wall?(pos) or state.block?(pos) or state.bomb?(pos))
-    }
-    dirs += ['STAY'] # staying is always possible
+      vec = GameState::DIR_OFFSETS[d]
+      state.enterable?(player.pos.addvec(vec))
+    } + ['STAY'] # staying is always possible
     dirs.flat_map do |d|
       if state.player_can_set_bomb(player)
-        [true, false].map do |b|
-          Move.new(d, b)
-        end
+        [Move.new(d, true), Move.new(d, false)]
       else
         [Move.new(d, false)]
       end
