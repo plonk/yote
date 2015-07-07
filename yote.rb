@@ -57,4 +57,4 @@ class BombmanClient
   end
 end
 
-BombmanClient.new(STDIN, STDOUT, "予定地").run
+BombmanClient.new(STDIN, STDOUT, "予定地AI").run

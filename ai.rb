@@ -1,9 +1,16 @@
+require_relative 'move'
 require 'pp'
 
 class IO
   def pp(v)
     self.puts v.pretty_inspect
   end
+end
+
+def time
+  beg = Time.now
+  yield
+  Time.now - beg
 end
 
 module PosMethods
@@ -15,32 +22,14 @@ module PosMethods
     fail ArgumentError unless unit_vector.is_a? Array and unit_vector.size == 2
     xoff, yoff = unit_vector
     res = dup()
-    res.x += xoff
-    res.y += yoff
+    res['x'] += xoff
+    res['y'] += yoff
     res
   end
 end
 
 class Hash
   include PosMethods
-
-  def method_missing(name, *args, &block)
-    if name.to_s =~ /(.*)=\z/
-      str = $1
-      if has_key?(str)
-        self[str] = args.first
-      else
-        fail "key #{str} not found "
-      end
-    else
-      str = name.to_s
-      if has_key?(str)
-        return self[str]
-      else
-        fail "key #{str} not found "
-      end
-    end
-  end
 end
 
 # ボムマンAIクラス
@@ -55,19 +44,51 @@ class BombmanAi
   end
 
   # シミュレーションのパラメータ
-  NSIMULATIONS = 20 # 一手につきシミュレーションを行う回数
+  NSIMULATIONS = 10 # 一手につきシミュレーションを行う回数
   DEPTH = 15        # 何手先までシミュレーションを行うか
 
   # 手を決定する
   # GameState → Move
   def move(state)
     unless state.find_player(@id)['isAlive']
-      return Move.new('STAY', false, '死んでます')
+      return Move.new('STAY', false)
     end
 
     legal_moves(state, @id).max_by do |m|
       score_move(m, state)
     end
+  end
+
+  # (GameState, Integer) → [GameState]
+  # depth 手先まで、全てのプレーヤーをランダム移動させ、
+  # 状態の系列を返す
+  def simulate(state, depth)
+    series = []
+    depth.times do
+      series << state
+      break unless state.find_player(@id)['isAlive']
+      commands = (0..3).map do |id|
+        [id, legal_moves(state, id).sample]
+      end.to_h
+
+      state = state.transition(commands)
+    end
+    series
+  end
+
+  # (GameState, Integer) → GameState
+  # depth 手先まで、全てのプレーヤーをランダム移動させる
+  # state を破壊的に変更し、state を返す
+  def simulate!(state, depth)
+    depth.times do
+      break unless state.find_player(@id)['isAlive']
+      commands = (0..3).map do |id|
+        [id, legal_moves(state, id).sample]
+      end.to_h
+
+      state.transition!(commands)
+    end
+    state
   end
 
   private
@@ -87,23 +108,12 @@ class BombmanAi
       end.to_h
       first_step = state.transition(commands)
 
-      result = simulate(first_step, DEPTH - 1)
+      # series = simulate(first_step, DEPTH - 1)
+      # result = series.last
+      result = simulate!(first_step, DEPTH - 1)
       score(result, @id)
     end
     arithmetic_mean scores
-  end
-
-  # (GameState, Integer) → GameState
-  def simulate(state, depth)
-    depth.times do |turn|
-      break unless state.find_player(@id)['isAlive']
-      commands = (0..3).map do |id|
-        [id, legal_moves(state, id).sample]
-      end.to_h
-
-      state = state.transition(commands)
-    end
-    state
   end
 
   # [Numeric] → Float
@@ -112,15 +122,18 @@ class BombmanAi
     list.inject(:+).fdiv list.size
   end
 
+  FOUR_CORNERS = [[1,1], [13,1], [13,13], [1,13]]
   # (GameState, Integer) → [Move]
   def legal_moves(state, id)
     player = state.find_player(id)
     dirs = (DIR - ['STAY']).select { |d|
       vec = GameState::DIR_OFFSETS[d]
-      state.enterable?(player.pos.addvec(vec))
+      state.enterable?(player['pos'].addvec(vec))
     } + ['STAY'] # staying is always possible
+    pos = player['pos'].to_coords
+    can_set_bomb = state.player_can_set_bomb(player)
     dirs.flat_map do |d|
-      if state.player_can_set_bomb(player)
+      if can_set_bomb && !FOUR_CORNERS.include?(pos)
         [Move.new(d, true), Move.new(d, false)]
       else
         [Move.new(d, false)]
@@ -138,10 +151,10 @@ class BombmanAi
     x += -100 unless me['isAlive']
 
     # 自分以外の敵が少ない方が良い
-    x += ([*0..3] - [id]).count { |i| !state.find_player(i)['isAlive'] } * 10
+    x += ([*0..3] - [id]).count { |i| !state.find_player(i)['isAlive'] } * 50
 
     # 自分のステータスが高い方が良い
-    # x += me['power'] + me['setBombLimit']
+    x += me['power'] * 10 + me['setBombLimit'] * 5
 
     return x
   end

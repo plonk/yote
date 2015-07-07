@@ -1,14 +1,27 @@
 require 'json'
+require 'set'
 
 class GameState
-  attr_reader :struct
+  attr_reader :turn, :walls, :blocks, :players, :bombs, :items, :fires
 
   def initialize(struct)
-    @struct = struct
+    @turn = struct['turn']
+    @walls = Set.new(struct['walls'])
+    @blocks = Set.new(struct['blocks'])
+    @players = struct['players']
+    @bombs = struct['bombs']
+    @items = struct['items']
+    @fires = Set.new(struct['fires'])
   end
 
   def initialize_copy(orig)
-    @struct = JSON.parse(orig.struct.to_json)
+    @turn = orig.turn
+    @walls = orig.walls.dup
+    @blocks = orig.blocks.dup
+    @players = Marshal.load Marshal.dump orig.players
+    @bombs = Marshal.load Marshal.dump orig.bombs
+    @items = Marshal.load Marshal.dump orig.items
+    @fires = orig.fires.dup
   end
 
   # {Integer => Move} → GameState
@@ -78,12 +91,12 @@ class GameState
       eval_action!(find_player(id), move)
     end
 
-    self.turn += 1
+    @turn += 1
 
     # サドンデス時の落下する壁
     if turn >= 360 and turn - 360 < FALLING_WALLS.size
       pt = FALLING_WALLS[turn-360]
-      walls << pt
+      @walls += [pt]
       blocks.delete(pt)
       items.delete_if { |item| item['pos'].values_at('x','y') == pt }
       bombs.delete_if { |bomb| bomb['pos'].values_at('x','y') == pt }
@@ -103,20 +116,20 @@ class GameState
       items.each do |item|
         if item['pos'] == player['pos']
           item_effect!(item, player)
-          self.items -= [item]
+          @items -= [item]
         end
       end
     end
 
     bombs_to_explode = bombs.select { |b| b['timer'] <= 0 }
-    fires = []
+    new_fires = Set.new
     until bombs_to_explode.size == 0
       # setBombCountの追跡はできない
-      fires += explode_bombs(bombs_to_explode)
-      self.bombs -= bombs_to_explode
-      bombs_to_explode = bombs.select { |b| fires.include? pos_to_a(b['pos']) }
+      new_fires += explode_bombs(bombs_to_explode)
+      @bombs -= bombs_to_explode
+      bombs_to_explode = bombs.select { |b| new_fires.include? pos_to_a(b['pos']) }
     end
-    self.fires = fires
+    @fires = new_fires
 
     items.delete_if do |item|
       fires.include? pos_to_a(item['pos'])
@@ -151,9 +164,9 @@ class GameState
 
   def player_set_bomb!(player)
     raise unless player_can_set_bomb(player)
-    # player['setBombCount'] += 1
+    player['setBombCount'] += 1
     player['totalSetBombCount'] += 1
-    self.bombs += [{"pos" => player['pos'],
+    @bombs += [{"pos" => player['pos'],
                 "timer" => 10,
                 "power" => player['power']}]
   end
@@ -178,20 +191,10 @@ class GameState
     next_pt = pos_to_a(next_pos)
 
     if player['isAlive'] &&
-        !bombs.map{|b| b['pos']}.include?(next_pos) &&
+        !bombs.any? { |b| ['pos'] == next_pos } &&
         !blocks.include?(next_pt) &&
         !walls.include?(next_pt)
       player['pos'] = next_pos
-    end
-  end
-
-  %w[turn walls blocks players bombs items fires].each do |acc|
-    define_method(acc) do
-      @struct[acc]
-    end
-
-    define_method("#{acc}=") do |x|
-      @struct[acc] = x
     end
   end
 
