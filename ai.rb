@@ -1,18 +1,6 @@
 require_relative 'move'
 require 'pp'
 
-class IO
-  def pp(v)
-    self.puts v.pretty_inspect
-  end
-end
-
-def time
-  beg = Time.now
-  yield
-  Time.now - beg
-end
-
 module PosMethods
   def to_coords
     values_at('x', 'y')
@@ -32,6 +20,12 @@ class Hash
   include PosMethods
 end
 
+class Array
+  def to_pos
+    { 'x' => first, 'y' => self[1] }
+  end
+end
+
 # ボムマンAIクラス
 class BombmanAi
   attr_reader :name, :id
@@ -44,7 +38,7 @@ class BombmanAi
   end
 
   # シミュレーションのパラメータ
-  NSIMULATIONS = 10 # 一手につきシミュレーションを行う回数
+  NSIMULATIONS = 5  # 一手につきシミュレーションを行う回数
   DEPTH = 15        # 何手先までシミュレーションを行うか
 
   # 手を決定する
@@ -54,8 +48,25 @@ class BombmanAi
       return Move.new('STAY', false)
     end
 
-    legal_moves(state, @id).max_by do |m|
-      score_move(m, state)
+    time_start = Time.now
+    loop do
+      moves = legal_moves(state, @id)
+      scores = moves.map do |m|
+        score = score_move(m, state)
+        # STDERR.puts "#{m.to_s}: #{score}"
+        score
+      end
+      # 生き残る未来が見えない場合は、450ms で探索を打ち切って
+      # 爆弾を置かないランダムな手を選択する。
+      if scores[0] < -50 && scores.all? { |s| s == scores[0] }
+        if Time.now - time_start < 0.45
+          next
+        else
+          return moves.find { |m| m.bomb == false }
+        end
+      end
+      # 他より良い手が見付かればそれを選択する。
+      return moves.max_by.with_index { |move, i| scores[i] }
     end
   end
 
@@ -111,7 +122,9 @@ class BombmanAi
       # series = simulate(first_step, DEPTH - 1)
       # result = series.last
       result = simulate!(first_step, DEPTH - 1)
-      score(result, @id)
+      score(result, @id).tap do |s|
+        # STDERR.puts s.inspect
+      end
     end
     arithmetic_mean scores
   end
@@ -122,7 +135,6 @@ class BombmanAi
     list.inject(:+).fdiv list.size
   end
 
-  FOUR_CORNERS = [[1,1], [13,1], [13,13], [1,13]]
   # (GameState, Integer) → [Move]
   def legal_moves(state, id)
     player = state.find_player(id)
@@ -130,10 +142,9 @@ class BombmanAi
       vec = GameState::DIR_OFFSETS[d]
       state.enterable?(player['pos'].addvec(vec))
     } + ['STAY'] # staying is always possible
-    pos = player['pos'].to_coords
     can_set_bomb = state.player_can_set_bomb(player)
     dirs.flat_map do |d|
-      if can_set_bomb && !FOUR_CORNERS.include?(pos)
+      if can_set_bomb
         [Move.new(d, true), Move.new(d, false)]
       else
         [Move.new(d, false)]
@@ -144,19 +155,7 @@ class BombmanAi
   # 評価関数
   # ゲーム状態 state はプレーヤー id にとってどれほど有利であるか
   def score(state, id)
-    x = 0
-    me = state.find_player(id)
-
-    # 自分が死んでいるのは悪い
-    x += -100 unless me['isAlive']
-
-    # 自分以外の敵が少ない方が良い
-    x += ([*0..3] - [id]).count { |i| !state.find_player(i)['isAlive'] } * 50
-
-    # 自分のステータスが高い方が良い
-    x += me['power'] * 10 + me['setBombLimit'] * 5
-
-    return x
+    state.find_player(id)['isAlive'] ? 0 : -100
   end
 
 end

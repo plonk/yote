@@ -24,6 +24,18 @@ class GameState
     @fires = orig.fires.dup
   end
 
+  def to_json
+    {
+      "turn" => @turn,
+      "walls" => @walls.to_a,
+      "blocks" => @blocks.to_a,
+      "players" => @players,
+      "bombs" => @bombs,
+      "items" => @items,
+      "fires" => @fires.to_a
+    }.to_json
+  end
+
   # {Integer => Move} → GameState
   def transition(id_to_move)
     state = self.clone
@@ -36,15 +48,15 @@ class GameState
   end
 
   def block?(pos)
-    blocks.include? pos.values_at('x', 'y')
+    blocks.include? pos.to_coords
   end
 
   def item?(pos)
-    items.map { |i| i['pos'] }.include? pos
+    items.any? { |item| item['pos'] == pos }
   end
 
   def wall?(pos)
-    walls.include? pos.values_at('x', 'y')
+    walls.include? pos.to_coords
   end
 
   def explode_bomb(bomb)
@@ -52,21 +64,20 @@ class GameState
       if power == 0
         []
       else
-        xoff, yoff = dirvec
-        next_pos = {"x"=>pos['x'] + xoff, "y"=>pos['y'] + yoff}
+        next_pos = pos.addvec(dirvec)
         if wall?(next_pos)
           []
         elsif block? next_pos or item? next_pos
-          [pos_to_a(next_pos)]
+          [next_pos.to_coords]
         else
-          [pos_to_a(next_pos)] + fire_column.(next_pos, dirvec, power - 1)
+          [next_pos.to_coords] + fire_column.(next_pos, dirvec, power - 1)
         end
       end
     }
 
     %w(UP DOWN LEFT RIGHT).flat_map { |d|
       fire_column.(bomb['pos'], DIR_OFFSETS[d], bomb['power'])
-    } + [pos_to_a(bomb['pos'])]
+    } + [bomb['pos'].to_coords]
   end
 
   # [{'pos'=>(Integer,Integer), 'power'=>Integer, 'timer'=>Integer}] → [(Integer,Integer)]
@@ -85,7 +96,7 @@ class GameState
     end
   end
 
-  # {Integer => Move}
+  # {Integer => Move} → GameState
   def transition!(id_to_move)
     id_to_move.each_pair do |id, move|
       eval_action!(find_player(id), move)
@@ -97,23 +108,17 @@ class GameState
     if turn >= 360 and turn - 360 < FALLING_WALLS.size
       pt = FALLING_WALLS[turn-360]
       @walls += [pt]
-      blocks.delete(pt)
-      items.delete_if { |item| item['pos'].values_at('x','y') == pt }
-      bombs.delete_if { |bomb| bomb['pos'].values_at('x','y') == pt }
-      players.each do |player|
-        if pos_to_a(player['pos']) == pt
-          player['isAlive'] = false
-          player['ch'] = '墓'
-        end
-      end
+      @blocks.delete(pt)
+      @items.delete_if { |item| item['pos'].to_coords == pt }
+      @bombs.delete_if { |bomb| bomb['pos'].to_coords == pt }
     end
 
-    bombs.each do |bomb|
+    @bombs.each do |bomb|
       bomb['timer'] -= 1
     end
 
-    players.each do |player|
-      items.each do |item|
+    @players.each do |player|
+      @items.each do |item|
         if item['pos'] == player['pos']
           item_effect!(item, player)
           @items -= [item]
@@ -121,36 +126,41 @@ class GameState
       end
     end
 
-    bombs_to_explode = bombs.select { |b| b['timer'] <= 0 }
+    bombs_to_explode = @bombs.select { |b| b['timer'] <= 0 }
     new_fires = Set.new
     until bombs_to_explode.size == 0
       # setBombCountの追跡はできない
       new_fires += explode_bombs(bombs_to_explode)
       @bombs -= bombs_to_explode
-      bombs_to_explode = bombs.select { |b| new_fires.include? pos_to_a(b['pos']) }
+      bombs_to_explode = @bombs.select { |b| new_fires.include? b['pos'].to_coords }
     end
     @fires = new_fires
 
-    items.delete_if do |item|
-      fires.include? pos_to_a(item['pos'])
+    @items.delete_if do |item|
+      @fires.include? item['pos'].to_coords
     end
 
-    blocks.delete_if do |block|
-      # アイテムが出る処理は書けない
-      fires.include? block
+    # ブロックは 90 個。アイテムは力と弾が10個ずつ出る
+    @blocks.delete_if do |coords|
+      being_destroyed = @fires.include?(coords)
+      if being_destroyed
+        if rand < 20.0/90 # アイテムが出る確率
+          @items += [{ 'pos' => coords.to_pos,
+                       'name' => ['力', '弾'].sample }]
+        end
+      end
+      being_destroyed
     end
 
-    players.each do |player|
-      pt = pos_to_a player['pos']
-      if fires.include? pt
+    @players.each do |player|
+      coords = player['pos'].to_coords
+      if @fires.include?(coords) or @walls.include?(coords)
         player['isAlive'] = false
         player['ch'] = '墓'
       end
     end
-  end
 
-  def pos_to_a(pos)
-    [pos['x'], pos['y']]
+    self
   end
 
   def player_can_set_bomb(player)
@@ -163,7 +173,7 @@ class GameState
   end
 
   def player_set_bomb!(player)
-    raise unless player_can_set_bomb(player)
+    # raise unless player_can_set_bomb(player)
     player['setBombCount'] += 1
     player['totalSetBombCount'] += 1
     @bombs += [{"pos" => player['pos'],
@@ -184,16 +194,9 @@ class GameState
       player_set_bomb!(player)
     end
 
-    dx, dy = DIR_OFFSETS[move.command]
-    next_pos = {
-      "x" => player['pos']['x'] + dx,
-      "y" => player['pos']['y'] + dy }
-    next_pt = pos_to_a(next_pos)
+    next_pos = player['pos'].addvec DIR_OFFSETS[move.command]
 
-    if player['isAlive'] &&
-        !bombs.any? { |b| ['pos'] == next_pos } &&
-        !blocks.include?(next_pt) &&
-        !walls.include?(next_pt)
+    if player['isAlive'] && enterable?(next_pos)
       player['pos'] = next_pos
     end
   end
