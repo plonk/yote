@@ -57,4 +57,5 @@ class BombmanClient
   end
 end
 
-BombmanClient.new(STDIN, STDOUT, "予定地AI").run
+name = ARGV[0] || "予定地AI"
+BombmanClient.new(STDIN, STDOUT, name).run
