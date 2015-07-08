@@ -1,33 +1,12 @@
 require_relative 'move'
-require 'pp'
-
-module PosMethods
-  def to_coords
-    values_at('x', 'y')
-  end
-
-  def addvec(unit_vector)
-    fail ArgumentError unless unit_vector.is_a? Array and unit_vector.size == 2
-    xoff, yoff = unit_vector
-    res = dup()
-    res['x'] += xoff
-    res['y'] += yoff
-    res
-  end
-end
-
-class Hash
-  include PosMethods
-end
-
-class Array
-  def to_pos
-    { 'x' => first, 'y' => self[1] }
-  end
-end
+require_relative 'pos'
 
 # ボムマンAIクラス
 class BombmanAi
+  # シミュレーションのパラメータ
+  NSIMULATIONS = 5  # 一手につきシミュレーションを行う回数
+  DEPTH = 15        # 何手先までシミュレーションを行うか
+
   attr_reader :name, :id
 
   DIR = %w[UP DOWN LEFT RIGHT STAY]
@@ -36,10 +15,6 @@ class BombmanAi
     @name = name
     @id = id
   end
-
-  # シミュレーションのパラメータ
-  NSIMULATIONS = 5  # 一手につきシミュレーションを行う回数
-  DEPTH = 15        # 何手先までシミュレーションを行うか
 
   # 手を決定する
   # GameState → Move
