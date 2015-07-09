@@ -98,8 +98,12 @@ class GameState
 
   # {Integer => Move} → GameState
   def transition!(id_to_move)
-    id_to_move.each_pair do |id, move|
-      eval_action!(find_player(id), move)
+    (0..3).each do |id|
+      eval_put_bomb_action!(find_player(id), id_to_move[id])
+    end
+
+    (0..3).each do |id|
+      eval_move_action!(find_player(id), id_to_move[id])
     end
 
     @turn += 1
@@ -189,11 +193,13 @@ class GameState
     'STAY'  => [ 0,  0]
   }
 
-  def eval_action!(player, move)
+  def eval_put_bomb_action!(player, move)
     if move.bomb && player_can_set_bomb(player)
       player_set_bomb!(player)
     end
+  end
 
+  def eval_move_action!(player, move)
     next_pos = player['pos'].addvec DIR_OFFSETS[move.command]
 
     if player['isAlive'] && enterable?(next_pos)
